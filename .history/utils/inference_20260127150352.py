@@ -154,7 +154,7 @@ class LivenessInference:
                             face_bboxes: Optional[List[Tuple]] = None,
                             use_motion_detector: bool = True) -> Dict[str, Any]:
         """
-        Predict liveness for video frames with motion analysis and temporal smoothing
+        Predict liveness for video frames with motion analysis and aggregation
         Args:
             frames: List of video frames (BGR format)
             face_bboxes: Optional list of face bounding boxes
@@ -164,17 +164,6 @@ class LivenessInference:
         """
         # Standard frame-by-frame predictions
         predictions, confidences = self.predict_batch(frames, face_bboxes)
-        
-        # Apply temporal smoothing if enabled
-        if self.use_temporal_smoothing:
-            smooth_result = self.temporal_smoother.process_video(confidences)
-            smoothed_confidence = smooth_result['smoothed_confidence']
-            temporal_pred = smooth_result['prediction']
-            attention_weights = smooth_result.get('attention_weights', [])
-        else:
-            smoothed_confidence = None
-            temporal_pred = None
-            attention_weights = []
         
         # Motion-based detection
         motion_result = None
@@ -205,12 +194,8 @@ class LivenessInference:
         frame_prediction = "Live" if live_count > fake_count else "Fake"
         frame_confidence = max(live_count, fake_count) / len(predictions)
         
-        # Use temporal smoothing if available
-        if self.use_temporal_smoothing and temporal_pred:
-            overall_prediction = temporal_pred
-            overall_confidence = smoothed_confidence
         # Combine frame and motion predictions
-        elif motion_result and motion_result['label'] != "Uncertain":
+        if motion_result and motion_result['label'] != "Uncertain":
             # Weight: 60% frame predictions, 40% motion detection
             if frame_prediction == motion_result['label']:
                 # Agreement - boost confidence
@@ -239,7 +224,7 @@ class LivenessInference:
         # Temporal consistency
         consistency_score = self._calculate_temporal_consistency(predictions)
         
-        result = {
+        return {
             'overall_prediction': overall_prediction,
             'overall_confidence': float(overall_confidence),
             'frame_prediction': frame_prediction,
@@ -254,19 +239,6 @@ class LivenessInference:
             'temporal_consistency': consistency_score,
             'num_frames': len(frames)
         }
-        
-        # Add temporal smoothing info if available
-        if self.use_temporal_smoothing:
-            result['temporal_smoothing'] = {
-                'smoothed_confidence': smoothed_confidence,
-                'prediction': temporal_pred,
-                'attention_weights': attention_weights,
-                'raw_mean': float(np.mean(confidences)),
-                'variance_reduction': smooth_result.get('variance_reduction', 0),
-                'stable': smooth_result.get('stable', False)
-            }
-        
-        return result
     
     def _calculate_temporal_consistency(self, predictions: List[str]) -> float:
         """

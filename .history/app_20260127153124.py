@@ -135,7 +135,7 @@ def process_image_input(image_input, model, device, preprocessor, face_detector,
     st.info(f"Detected {len(faces)} face(s)")
     
     # Process each face with enhanced inference
-    inference = EnhancedLivenessInference(model, device, use_temporal_smoothing=True)
+    inference = EnhancedLivenessInference(model, device)
     
     col1, col2 = st.columns([1, 1])
     
@@ -162,7 +162,7 @@ def process_image_input(image_input, model, device, preprocessor, face_detector,
             face_crop = face_detector.crop_face(image_array, bbox)
             
             st.write(f"**Face {idx + 1}:**")
-            st.image(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB))
+            st.image(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB), use_column_width=True)
             
             if pred == "Live":
                 st.success(f"✅ Live - Confidence: {conf:.2%}")
@@ -218,9 +218,9 @@ def process_video_input(video_path, model, device, preprocessor, face_detector,
     
     progress_bar.progress(50)
     
-    # Run inference with motion analysis (temporal smoothing enabled for video)
-    status_text.text("Running liveness detection with temporal transformer...")
-    inference = EnhancedLivenessInference(model, device, use_temporal_smoothing=True)
+    # Run inference with motion analysis
+    status_text.text("Running liveness detection...")
+    inference = EnhancedLivenessInference(model, device)
     results = inference.predict_video_with_motion(frames, face_bboxes)
     
     progress_bar.progress(100)
@@ -246,18 +246,10 @@ def process_video_input(video_path, model, device, preprocessor, face_detector,
     # Overall result
     st.divider()
     st.subheader("Overall Video Result")
-    
-    # Prepare temporal info for display
-    temporal_info = {
-        'smoothed_confidence': results.get('smoothed_confidence') or results.get('final_confidence'),
-        'original_confidence': results.get('original_confidence', np.mean(results.get('confidences', [0])))
-    }
-    
     display_detection_results(
         results['final_prediction'],
         results['final_confidence'],
-        len(faces),
-        temporal_info=temporal_info
+        len(faces)
     )
     
     # Show sample frames with detections
@@ -336,7 +328,7 @@ def main():
             
             if image_file:
                 image = Image.open(image_file)
-                st.image(image, caption="Uploaded Image")
+                st.image(image, caption="Uploaded Image", use_column_width=True)
                 
                 if st.button("🔍 Detect Liveness", key="image_detect"):
                     with st.spinner("Processing..."):
@@ -491,6 +483,7 @@ def main():
                 )
                 
                 st.image(cv2.cvtColor(frames[frame_idx], cv2.COLOR_BGR2RGB), 
+                        use_column_width=True,
                         caption=f"Frame {frame_idx + 1}/{len(frames)}")
                 
                 # Show frame grid thumbnails
@@ -499,6 +492,7 @@ def main():
                     for idx, frame in enumerate(frames):
                         with cols[idx % 4]:
                             st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 
+                                    use_column_width=True,
                                     caption=f"#{idx+1}")
                 
                 st.divider()

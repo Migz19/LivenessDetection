@@ -36,8 +36,7 @@ class EnhancedLivenessInference:
         self.use_temporal_smoothing = use_temporal_smoothing and TEMPORAL_SMOOTHER_AVAILABLE
         
         if self.use_temporal_smoothing:
-            # Use stronger smoothing (1.5x) for more noticeable transformer effect
-            self.temporal_smoother = TemporalSmoothingPipeline(window_size=8, smoothing_strength=1.5)
+            self.temporal_smoother = TemporalSmoothingPipeline(window_size=8)
             self.temporal_smoother.smoother.to(device)
     
     def predict_single_with_features(self, image: np.ndarray, 
@@ -201,10 +200,7 @@ class EnhancedLivenessInference:
             'motion_confidence': motion_conf,
             'final_prediction': final_prediction,
             'final_confidence': min(0.99, final_confidence),
-            'features': frame_results['features'],
-            'temporal_smoothing_applied': self.use_temporal_smoothing,
-            'smoothed_confidence': smoothed_confidence if self.use_temporal_smoothing else None,
-            'original_confidence': avg_model_conf
+            'features': frame_results['features']
         }
     
     def _adjust_confidence_by_features(self, model_conf: float, 

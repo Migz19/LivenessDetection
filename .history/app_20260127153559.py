@@ -491,6 +491,7 @@ def main():
                 )
                 
                 st.image(cv2.cvtColor(frames[frame_idx], cv2.COLOR_BGR2RGB), 
+                        use_column_width=True,
                         caption=f"Frame {frame_idx + 1}/{len(frames)}")
                 
                 # Show frame grid thumbnails
@@ -499,6 +500,7 @@ def main():
                     for idx, frame in enumerate(frames):
                         with cols[idx % 4]:
                             st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 
+                                    use_column_width=True,
                                     caption=f"#{idx+1}")
                 
                 st.divider()

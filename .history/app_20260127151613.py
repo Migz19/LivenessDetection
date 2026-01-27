@@ -135,7 +135,7 @@ def process_image_input(image_input, model, device, preprocessor, face_detector,
     st.info(f"Detected {len(faces)} face(s)")
     
     # Process each face with enhanced inference
-    inference = EnhancedLivenessInference(model, device, use_temporal_smoothing=True)
+    inference = EnhancedLivenessInference(model, device)
     
     col1, col2 = st.columns([1, 1])
     
@@ -162,7 +162,7 @@ def process_image_input(image_input, model, device, preprocessor, face_detector,
             face_crop = face_detector.crop_face(image_array, bbox)
             
             st.write(f"**Face {idx + 1}:**")
-            st.image(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB))
+            st.image(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB), use_column_width=True)
             
             if pred == "Live":
                 st.success(f"✅ Live - Confidence: {conf:.2%}")
@@ -218,9 +218,9 @@ def process_video_input(video_path, model, device, preprocessor, face_detector,
     
     progress_bar.progress(50)
     
-    # Run inference with motion analysis (temporal smoothing enabled for video)
-    status_text.text("Running liveness detection with temporal transformer...")
-    inference = EnhancedLivenessInference(model, device, use_temporal_smoothing=True)
+    # Run inference with motion analysis
+    status_text.text("Running liveness detection...")
+    inference = EnhancedLivenessInference(model, device)
     results = inference.predict_video_with_motion(frames, face_bboxes)
     
     progress_bar.progress(100)
@@ -246,18 +246,10 @@ def process_video_input(video_path, model, device, preprocessor, face_detector,
     # Overall result
     st.divider()
     st.subheader("Overall Video Result")
-    
-    # Prepare temporal info for display
-    temporal_info = {
-        'smoothed_confidence': results.get('smoothed_confidence') or results.get('final_confidence'),
-        'original_confidence': results.get('original_confidence', np.mean(results.get('confidences', [0])))
-    }
-    
     display_detection_results(
         results['final_prediction'],
         results['final_confidence'],
-        len(faces),
-        temporal_info=temporal_info
+        len(faces)
     )
     
     # Show sample frames with detections
@@ -336,7 +328,7 @@ def main():
             
             if image_file:
                 image = Image.open(image_file)
-                st.image(image, caption="Uploaded Image")
+                st.image(image, caption="Uploaded Image", use_column_width=True)
                 
                 if st.button("🔍 Detect Liveness", key="image_detect"):
                     with st.spinner("Processing..."):
@@ -433,78 +425,48 @@ def main():
             st.subheader("Webcam Input")
             
             num_frames = st.slider(
-                "Frames to capture (video duration)",
+                "Frames to capture",
                 min_value=5,
-                max_value=30,
-                value=15,
-                key="webcam_frame_count"
+                max_value=20,
+                value=10,
+                key="webcam_frames"
             )
             
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                if st.button("📹 Capture Video from Webcam", key="webcam_capture"):
-                    with st.spinner(f"Recording {num_frames} frames from webcam..."):
-                        frames = video_preprocessor.extract_frames_from_webcam(num_frames=num_frames)
+            if st.button("📹 Capture from Webcam", key="webcam_capture"):
+                with st.spinner("Opening webcam..."):
+                    frames = video_preprocessor.extract_frames_from_webcam(num_frames=num_frames)
+                    
+                    if len(frames) > 0:
+                        # Convert frames to bytes for serialization in session state
+                        frames_bytes = []
+                        for frame in frames:
+                            _, buffer = cv2.imencode('.jpg', frame)
+                            frames_bytes.append(buffer.tobytes())
                         
-                        if len(frames) > 0:
-                            # Convert frames to bytes for serialization in session state
-                            frames_bytes = []
-                            for frame in frames:
-                                _, buffer = cv2.imencode('.jpg', frame)
-                                frames_bytes.append(buffer.tobytes())
-                            
-                            # Store serialized frames in session state (use different key name to avoid conflict with slider)
-                            st.session_state.captured_webcam_frames = frames_bytes
-                            st.session_state.webcam_frames_captured = True
-                            st.success(f"✅ Captured {len(frames)} frames")
-                            st.rerun()
-                        else:
-                            st.error("Could not access webcam!")
-            
-            with col_btn2:
-                if st.session_state.get('webcam_frames_captured', False):
-                    if st.button("🔄 Clear Recording", key="clear_webcam"):
-                        st.session_state.captured_webcam_frames = None
-                        st.session_state.webcam_frames_captured = False
+                        # Store serialized frames in session state
+                        st.session_state.webcam_frames = frames_bytes
+                        st.session_state.frames_captured = True
+                        st.success(f"✅ Captured {len(frames)} frames")
                         st.rerun()
+                    else:
+                        st.error("Could not access webcam!")
             
             # Display captured frames and analysis button if frames exist
-            if st.session_state.get('webcam_frames_captured', False) and st.session_state.get('captured_webcam_frames'):
+            if st.session_state.get('frames_captured', False) and st.session_state.get('webcam_frames'):
                 # Convert bytes back to numpy arrays
-                frames_bytes = st.session_state.captured_webcam_frames
+                frames_bytes = st.session_state.webcam_frames
                 frames = []
                 for frame_bytes in frames_bytes:
                     nparr = np.frombuffer(frame_bytes, np.uint8)
                     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                     frames.append(frame)
                 
-                st.info(f"📹 **Recorded {len(frames)} frames** (click Analyze to process)")
-                
-                # Show video preview with frame slider
-                st.subheader("Video Preview")
-                frame_idx = st.slider(
-                    "Frame",
-                    min_value=0,
-                    max_value=len(frames)-1,
-                    value=0,
-                    key="webcam_frame_slider"
-                )
-                
-                st.image(cv2.cvtColor(frames[frame_idx], cv2.COLOR_BGR2RGB), 
-                        caption=f"Frame {frame_idx + 1}/{len(frames)}")
-                
-                # Show frame grid thumbnails
-                with st.expander("👁️ View All Frames as Grid"):
-                    cols = st.columns(4)
-                    for idx, frame in enumerate(frames):
-                        with cols[idx % 4]:
-                            st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 
-                                    caption=f"#{idx+1}")
-                
-                st.divider()
+                # Show first frame
+                st.image(cv2.cvtColor(frames[0], cv2.COLOR_BGR2RGB), 
+                        caption="First captured frame")
                 
                 # Run detection
-                if st.button("🔍 Analyze Captured Video", key="analyze_webcam"):
+                if st.button("🔍 Analyze Captured Frames", key="analyze_webcam"):
                     with st.spinner("Running liveness detection with temporal transformer..."):
                         # Detect faces in first frame
                         faces = face_detector.detect_faces(frames[0])
@@ -520,8 +482,8 @@ def main():
                             
                             # Prepare temporal info for display
                             temporal_info = {
-                                'smoothed_confidence': results.get('smoothed_confidence') or results.get('final_confidence'),
-                                'original_confidence': results.get('original_confidence', np.mean(results.get('confidences', [0])))
+                                'smoothed_confidence': results.get('final_confidence'),
+                                'original_confidence': np.mean(results.get('confidences', [0]))
                             }
                             
                             display_detection_results(

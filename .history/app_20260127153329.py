@@ -162,7 +162,7 @@ def process_image_input(image_input, model, device, preprocessor, face_detector,
             face_crop = face_detector.crop_face(image_array, bbox)
             
             st.write(f"**Face {idx + 1}:**")
-            st.image(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB))
+            st.image(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB), use_column_width=True)
             
             if pred == "Live":
                 st.success(f"✅ Live - Confidence: {conf:.2%}")
@@ -336,7 +336,7 @@ def main():
             
             if image_file:
                 image = Image.open(image_file)
-                st.image(image, caption="Uploaded Image")
+                st.image(image, caption="Uploaded Image", use_column_width=True)
                 
                 if st.button("🔍 Detect Liveness", key="image_detect"):
                     with st.spinner("Processing..."):
@@ -491,6 +491,7 @@ def main():
                 )
                 
                 st.image(cv2.cvtColor(frames[frame_idx], cv2.COLOR_BGR2RGB), 
+                        use_column_width=True,
                         caption=f"Frame {frame_idx + 1}/{len(frames)}")
                 
                 # Show frame grid thumbnails
@@ -499,6 +500,7 @@ def main():
                     for idx, frame in enumerate(frames):
                         with cols[idx % 4]:
                             st.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 
+                                    use_column_width=True,
                                     caption=f"#{idx+1}")
                 
                 st.divider()

@@ -36,8 +36,7 @@ class EnhancedLivenessInference:
         self.use_temporal_smoothing = use_temporal_smoothing and TEMPORAL_SMOOTHER_AVAILABLE
         
         if self.use_temporal_smoothing:
-            # Use stronger smoothing (1.5x) for more noticeable transformer effect
-            self.temporal_smoother = TemporalSmoothingPipeline(window_size=8, smoothing_strength=1.5)
+            self.temporal_smoother = TemporalSmoothingPipeline(window_size=8)
             self.temporal_smoother.smoother.to(device)
     
     def predict_single_with_features(self, image: np.ndarray, 
@@ -105,20 +104,12 @@ class EnhancedLivenessInference:
     def predict_video_with_motion(self, frames: List[np.ndarray],
                                  face_bboxes: List[Tuple] = None) -> Dict:
         """
-        Predict liveness for video with motion analysis + temporal smoothing
+        Predict liveness for video with motion analysis
         Primary: Model predictions on frames
         Secondary: Motion for confirmation/tiebreaking
-        Tertiary: Temporal smoothing for stability
         """
         # Model-based predictions on individual frames
         frame_results = self.predict_batch_with_features(frames, face_bboxes)
-        
-        # Apply temporal smoothing if enabled
-        if self.use_temporal_smoothing:
-            smooth_result = self.temporal_smoother.process_video(frame_results['confidences'])
-            smoothed_confidence = smooth_result['smoothed_confidence']
-        else:
-            smoothed_confidence = None
         
         # Motion-based liveness detection
         motion_pred, motion_conf, motion_features = self.motion_detector.detect_from_frames(
@@ -132,13 +123,6 @@ class EnhancedLivenessInference:
         # Calculate average model confidence
         avg_model_conf = np.mean(frame_results['confidences'])
         
-        # Use temporal smoothing if available
-        if self.use_temporal_smoothing:
-            temporal_pred = smooth_result['prediction']
-            use_smoothed = True
-        else:
-            use_smoothed = False
-        
         # PRIMARY DECISION: Model-based majority voting
         if live_count > fake_count:
             # Models say more Live than Fake
@@ -146,11 +130,8 @@ class EnhancedLivenessInference:
             # Confidence is based on the proportion of Live frames
             base_confidence = live_count / len(frame_results['predictions'])
             
-            # Use smoothed confidence if available
-            if use_smoothed:
-                final_confidence = min(0.98, smoothed_confidence)
             # Motion can boost or slightly reduce confidence
-            elif motion_pred == "Live":
+            if motion_pred == "Live":
                 # Motion confirms = higher confidence
                 final_confidence = min(0.98, (base_confidence + motion_conf) / 2)
             elif motion_pred == "Uncertain":
@@ -165,11 +146,8 @@ class EnhancedLivenessInference:
             final_prediction = "Fake"
             base_confidence = fake_count / len(frame_results['predictions'])
             
-            # Use smoothed confidence if available
-            if use_smoothed:
-                final_confidence = min(0.98, smoothed_confidence)
             # Motion can boost or slightly reduce confidence
-            elif motion_pred == "Fake":
+            if motion_pred == "Fake":
                 # Motion confirms = higher confidence
                 final_confidence = min(0.98, (base_confidence + motion_conf) / 2)
             elif motion_pred == "Uncertain":
@@ -201,10 +179,7 @@ class EnhancedLivenessInference:
             'motion_confidence': motion_conf,
             'final_prediction': final_prediction,
             'final_confidence': min(0.99, final_confidence),
-            'features': frame_results['features'],
-            'temporal_smoothing_applied': self.use_temporal_smoothing,
-            'smoothed_confidence': smoothed_confidence if self.use_temporal_smoothing else None,
-            'original_confidence': avg_model_conf
+            'features': frame_results['features']
         }
     
     def _adjust_confidence_by_features(self, model_conf: float, 

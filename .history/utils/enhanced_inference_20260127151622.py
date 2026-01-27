@@ -36,8 +36,7 @@ class EnhancedLivenessInference:
         self.use_temporal_smoothing = use_temporal_smoothing and TEMPORAL_SMOOTHER_AVAILABLE
         
         if self.use_temporal_smoothing:
-            # Use stronger smoothing (1.5x) for more noticeable transformer effect
-            self.temporal_smoother = TemporalSmoothingPipeline(window_size=8, smoothing_strength=1.5)
+            self.temporal_smoother = TemporalSmoothingPipeline(window_size=8)
             self.temporal_smoother.smoother.to(device)
     
     def predict_single_with_features(self, image: np.ndarray, 
