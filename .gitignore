@@ -85,3 +85,4 @@ $RECYCLE.BIN/
 # Model artifacts
 *.pkl
 *.pickle
+.aider*

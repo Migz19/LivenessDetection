@@ -11,7 +11,37 @@ from typing import Optional, Tuple, Callable
 mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 
+from collections import deque
 
+class BlinkCounter:
+    def __init__(self, ear_close=0.20, ear_open=0.24, min_closed_frames=2, window=30):
+        self.ear_close = ear_close
+        self.ear_open = ear_open
+        self.min_closed_frames = min_closed_frames
+        self.closed_run = 0
+        self.is_closed = False
+        self.blinks = 0
+        self.ear_hist = deque(maxlen=window)
+
+    def update(self, ear):
+        if np.isnan(ear):
+            return self.blinks
+
+        self.ear_hist.append(ear)
+
+        # closed detection
+        if ear < self.ear_close:
+            self.closed_run += 1
+            if (not self.is_closed) and self.closed_run >= self.min_closed_frames:
+                self.is_closed = True
+        # open detection
+        elif ear > self.ear_open:
+            if self.is_closed:
+                self.blinks += 1
+            self.is_closed = False
+            self.closed_run = 0
+
+        return self.blinks
 class RealTimeFaceDetector:
     """
     Real-time face detection for webcam/video streaming

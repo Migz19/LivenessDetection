@@ -437,83 +437,146 @@ class VideoPreprocessor:
             'ear_variance': np.var(ear_values)
         }
     
-    def _calculate_eye_aspect_ratio(self, landmarks) -> float:
-        """
-        Calculate Eye Aspect Ratio (EAR) from facial landmarks
-        Args:
-            landmarks: Facial landmarks (assuming dlib/mediapipe format)
-        Returns:
-            EAR value
-        """
-        # This is a placeholder - actual implementation depends on landmark format
-        # Typically uses 6 points per eye
-        # EAR = (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
-        
-        # Mock calculation - replace with actual landmark indices
-        try:
-            # Assuming landmarks is array-like with x,y coordinates
-            if hasattr(landmarks, '__len__') and len(landmarks) >= 6:
-                p1, p2, p3, p4, p5, p6 = landmarks[:6]
-                
-                # Calculate Euclidean distances
-                def dist(pt1, pt2):
-                    return np.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
-                
-                vertical1 = dist(p2, p6)
-                vertical2 = dist(p3, p5)
-                horizontal = dist(p1, p4)
-                
-                ear = (vertical1 + vertical2) / (2.0 * horizontal + 1e-7)
-                return ear
-        except:
-            pass
-        
-        return 0.25  # Default value (eyes open)
-    
-    def calculate_temporal_consistency(self, frames: List[np.ndarray], 
-                                      face_bboxes: List = None) -> Dict[str, float]:
-        """
-        Calculate temporal consistency metrics across frames
-        Args:
-            frames: List of frames in BGR format
-            face_bboxes: Optional list of bounding boxes
-        Returns:
-            Dictionary of temporal consistency metrics
-        """
-        if len(frames) < 2:
-            return {'frame_diff_mean': 0.0, 'frame_diff_std': 0.0, 'motion_smoothness': 0.0}
-        
-        frame_diffs = []
-        
-        for i in range(len(frames) - 1):
-            frame1 = frames[i]
-            frame2 = frames[i + 1]
-            
-            # Crop to face region if available
-            if face_bboxes and len(face_bboxes) > i:
-                bbox = face_bboxes[i] if len(face_bboxes) > i else face_bboxes[0]
-                x1, y1, x2, y2 = bbox
-                frame1 = frame1[y1:y2, x1:x2]
-                frame2 = frame2[y1:y2, x1:x2]
-            
-            # Calculate frame difference
-            diff = cv2.absdiff(frame1, frame2)
-            diff_mean = np.mean(diff)
-            frame_diffs.append(diff_mean)
-        
-        frame_diffs = np.array(frame_diffs)
-        
-        # Calculate smoothness (lower variance = smoother motion)
-        motion_smoothness = 1.0 / (np.var(frame_diffs) + 1e-7)
-        
-        return {
-            'frame_diff_mean': np.mean(frame_diffs),
-            'frame_diff_std': np.std(frame_diffs),
-            'motion_smoothness': motion_smoothness,
-            'max_frame_diff': np.max(frame_diffs)
-        }
-    
-    def extract_color_distribution(self, frame: np.ndarray, 
+
+
+# MediaPipe FaceMesh canonical eye landmark indices (6-point EAR style)
+MP_LEFT_EYE  = [33, 160, 158, 133, 153, 144]
+MP_RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+
+# dlib-68 eye indices
+DLIB_LEFT_EYE  = [36, 37, 38, 39, 40, 41]
+DLIB_RIGHT_EYE = [42, 43, 44, 45, 46, 47]
+
+def _to_xy(landmarks, image_shape=None):
+    """
+    landmarks: array-like (N,2) or (N,3), possibly normalized if MediaPipe.
+    image_shape: (H, W) if you want to convert normalized->pixel coords.
+    """
+    pts = np.asarray(landmarks, dtype=np.float32)
+    if pts.ndim != 2 or pts.shape[0] < 6:
+        return None
+    pts = pts[:, :2]
+
+    if image_shape is not None:
+        H, W = image_shape[:2]
+        # If values look normalized, scale them
+        if np.max(pts) <= 1.5:
+            pts[:, 0] *= W
+            pts[:, 1] *= H
+    return pts
+
+def _ear_from_6pts(eye_pts_6):
+    # eye_pts_6 in order: [p1,p2,p3,p4,p5,p6]
+    p1, p2, p3, p4, p5, p6 = eye_pts_6
+    def norm(a, b): return float(np.linalg.norm(a - b))
+    vertical1 = norm(p2, p6)
+    vertical2 = norm(p3, p5)
+    horizontal = norm(p1, p4)
+
+    if horizontal < 1e-6:
+        return np.nan
+    return (vertical1 + vertical2) / (2.0 * horizontal)
+
+def calculate_eye_aspect_ratio(landmarks, image_shape=None, fmt="mediapipe"):
+    """
+    Returns: float EAR (avg of both eyes) or np.nan if not computable.
+    fmt: 'mediapipe' or 'dlib68'
+    """
+    pts = _to_xy(landmarks, image_shape=image_shape)
+    if pts is None:
+        return np.nan
+
+    if fmt == "mediapipe":
+        left_idx, right_idx = MP_LEFT_EYE, MP_RIGHT_EYE
+    elif fmt == "dlib68":
+        left_idx, right_idx = DLIB_LEFT_EYE, DLIB_RIGHT_EYE
+    else:
+        raise ValueError("fmt must be 'mediapipe' or 'dlib68'")
+
+    try:
+        left_eye = pts[left_idx]
+        right_eye = pts[right_idx]
+    except Exception:
+        return np.nan
+
+    left_ear = _ear_from_6pts(left_eye)
+    right_ear = _ear_from_6pts(right_eye)
+
+    if np.isnan(left_ear) and np.isnan(right_ear):
+        return np.nan
+    if np.isnan(left_ear):
+        return right_ear
+    if np.isnan(right_ear):
+        return left_ear
+
+    return 0.5 * (left_ear + right_ear)
+
+def calculate_temporal_consistency(frames: List[np.ndarray], face_bboxes: List=None,
+                                  resize=(128, 128)) -> Dict[str, float]:
+    if len(frames) < 2:
+        return {'diff_mean': 0.0, 'diff_std': 0.0, 'flow_mean': 0.0, 'flow_std': 0.0, 'motion_smoothness': 0.0}
+
+    diffs = []
+    flow_mags = []
+
+    prev_gray = None
+
+    for i in range(len(frames)):
+        frame = frames[i]
+
+        # crop with bbox (clip to bounds)
+        if face_bboxes is not None and len(face_bboxes) > 0:
+            bbox = face_bboxes[i] if i < len(face_bboxes) else face_bboxes[-1]
+            x1, y1, x2, y2 = map(int, bbox)
+            h, w = frame.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            frame = frame[y1:y2, x1:x2]
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, resize, interpolation=cv2.INTER_AREA)
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        if prev_gray is not None:
+            # illumination-robust-ish difference
+            diff = cv2.absdiff(prev_gray, gray)
+            diffs.append(float(np.mean(diff)))
+
+            # optical flow magnitude
+            flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None,
+                                                pyr_scale=0.5, levels=3, winsize=15,
+                                                iterations=3, poly_n=5, poly_sigma=1.2, flags=0)
+            mag = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
+            flow_mags.append(float(np.mean(mag)))
+
+        prev_gray = gray
+
+    if len(diffs) == 0:
+        return {'diff_mean': 0.0, 'diff_std': 0.0, 'flow_mean': 0.0, 'flow_std': 0.0, 'motion_smoothness': 0.0}
+
+    diffs = np.asarray(diffs, dtype=np.float32)
+    flow_mags = np.asarray(flow_mags, dtype=np.float32) if len(flow_mags) else np.zeros_like(diffs)
+
+    # Smoothness: low "jerk" (2nd derivative) -> smoother, natural motion
+    if len(flow_mags) >= 3:
+        accel = np.diff(flow_mags, n=2)
+        jerk_var = float(np.var(accel))
+        motion_smoothness = 1.0 / (jerk_var + 1e-6)
+    else:
+        motion_smoothness = 1.0 / (float(np.var(flow_mags)) + 1e-6)
+
+    return {
+        'diff_mean': float(np.mean(diffs)),
+        'diff_std': float(np.std(diffs)),
+        'flow_mean': float(np.mean(flow_mags)),
+        'flow_std': float(np.std(flow_mags)),
+        'motion_smoothness': float(motion_smoothness),
+        'max_diff': float(np.max(diffs))
+    }
+
+def extract_color_distribution(self, frame: np.ndarray, 
                                    face_bbox=None) -> Dict[str, np.ndarray]:
         """
         Extract color distribution features to detect color artifacts in spoofed images

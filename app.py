@@ -13,7 +13,6 @@ from models.cnn_model import load_cnn_model
 from models.efficientnet_model import load_efficientnet_model
 from utils.preprocessing import ImagePreprocessor, VideoPreprocessor
 from utils.face_detection import FaceDetector, MultiiFaceProcessor
-from utils.inference import LivenessInference
 from utils.enhanced_inference import EnhancedLivenessInference
 
 # Set page config
