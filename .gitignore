@@ -86,3 +86,6 @@ $RECYCLE.BIN/
 *.pkl
 *.pickle
 .aider*
+
+# Claude Code temporary files
+tmpclaude-*.cwd
