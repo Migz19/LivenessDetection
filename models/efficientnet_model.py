@@ -42,7 +42,7 @@ def load_efficientnet_model(weights_path=None, device='cpu', pretrained=True):
     
     # Try to load full model first
     if weights_path is None:
-        weights_path = Path(__file__).parent.parent / 'weights' / 'efficientnet.pt'
+        weights_path = Path(__file__).parent.parent / 'weights' / 'efficientnet_b3_liveness_full.pt'
     
     if isinstance(weights_path, str):
         weights_path = Path(weights_path)
