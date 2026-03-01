@@ -1,4 +1,6 @@
-import streamlit as st
+import streamlit as st 
+# THIS FILE IS THE MAIN ENTRY POINT FOR THE STREAMLIT APPLICATION.
+#  IT HANDLES THE UI AND INTERACTIONS, 
 import torch
 import cv2
 import numpy as np
