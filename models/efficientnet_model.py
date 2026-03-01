@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torchvision import models
-from torchvision.models import EfficientNet_B3_Weights
 
 
 class EfficientNetLiveness(nn.Module):
@@ -13,11 +12,8 @@ class EfficientNetLiveness(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
         
-        # Load pretrained EfficientNet-B3 (matching your saved model)
-        if pretrained:
-            self.model = models.efficientnet_b3(weights=EfficientNet_B3_Weights.DEFAULT)
-        else:
-            self.model = models.efficientnet_b3(weights=None)
+        # Load EfficientNet-B3 WITHOUT pretrained weights (will load from local file)
+        self.model = models.efficientnet_b3(weights=None)
         
         # Freeze backbone (as in your training setup)
         for param in self.model.parameters():
@@ -49,54 +45,58 @@ def load_efficientnet_model(weights_path=None, device='cpu', pretrained=True):
     
     print(f"\nEfficientNet Model:")
     
-    # Create base model first
-    model = EfficientNetLiveness(pretrained=pretrained)
+    # Check if weights exist before creating model
+    if not weights_path.exists():
+        raise FileNotFoundError(f"❌ EfficientNet weights not found at {weights_path}. Please ensure the file exists.")
     
-    # Try to load weights
-    if weights_path.exists():
-        print(f"  Attempting to load from {weights_path.name}...")
+    # Create base model first (without pretrained)
+    model = EfficientNetLiveness(pretrained=False)
+    
+    # Load weights from local file
+    print(f"  Attempting to load from {weights_path.name}...")
+    try:
+        loaded = torch.load(weights_path, map_location=device, weights_only=False)
+        
+        # If it's a full model, use it directly
+        if isinstance(loaded, EfficientNetLiveness):
+            loaded = loaded.to(device)
+            loaded.eval()
+            print(f"  ✓ EfficientNet loaded successfully (full model)")
+            return loaded
+        
+        # If it's a state_dict, load it
+        elif isinstance(loaded, dict):
+            try:
+                model.load_state_dict(loaded, strict=False)
+                print(f"  ✓ EfficientNet weights loaded (state_dict)")
+            except Exception as e:
+                print(f"  ✗ Could not load state_dict: {e}")
+                raise
+    
+    except TypeError:
+        # Older PyTorch - try without weights_only
         try:
-            loaded = torch.load(weights_path, map_location=device, weights_only=False)
-            
-            # If it's a full model, use it directly
+            loaded = torch.load(weights_path, map_location=device)
             if isinstance(loaded, EfficientNetLiveness):
                 loaded = loaded.to(device)
                 loaded.eval()
                 print(f"  ✓ EfficientNet loaded successfully (full model)")
                 return loaded
-            
-            # If it's a state_dict, load it
             elif isinstance(loaded, dict):
                 try:
                     model.load_state_dict(loaded, strict=False)
                     print(f"  ✓ EfficientNet weights loaded (state_dict)")
                 except Exception as e:
-                    print(f"    Could not load state_dict: {e}")
-                    print(f"    Using pretrained ImageNet weights instead")
-        
-        except TypeError:
-            # Older PyTorch - try without weights_only
-            try:
-                loaded = torch.load(weights_path, map_location=device)
-                if isinstance(loaded, EfficientNetLiveness):
-                    loaded = loaded.to(device)
-                    loaded.eval()
-                    print(f"  ✓ EfficientNet loaded successfully (full model)")
-                    return loaded
-                elif isinstance(loaded, dict):
-                    try:
-                        model.load_state_dict(loaded, strict=False)
-                        print(f"  ✓ EfficientNet weights loaded (state_dict)")
-                    except Exception as e:
-                        print(f"    Could not load: {e}")
-            except Exception as e:
-                print(f"    torch.load failed: {e}")
+                    print(f"  ✗ Could not load: {e}")
+                    raise
         except Exception as e:
-            print(f"    torch.load failed: {e}")
+            print(f"  ✗ torch.load failed: {e}")
+            raise
+    except Exception as e:
+        print(f"  ✗ torch.load failed: {e}")
+        raise
     
-    # Return model (either with loaded weights or ImageNet pretrained)
+    # Return model with loaded weights
     model = model.to(device)
     model.eval()
-    if not weights_path.exists():
-        print(f"  ✓ EfficientNet Model initialized (using ImageNet pretrained)")
     return model

@@ -9,10 +9,10 @@ class Settings(BaseSettings):
     EFFICIENTNET_WEIGHTS_PATH: Path = BASE_DIR / "weights" / "efficientnet.pt"
 
     # Device
-    DEVICE: str = "cuda"  # or "cpu"
+    DEVICE: str = "cpu"  # or "cuda"
 
     # Inference thresholds
-    LIVENESS_THRESHOLD: float = 0.5
+    LIVENESS_THRESHOLD: float = 0.8
     FACE_CONFIDENCE_THRESHOLD: float = 0.7
 
     # Video processing

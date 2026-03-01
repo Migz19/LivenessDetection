@@ -89,3 +89,5 @@ $RECYCLE.BIN/
 
 # Claude Code temporary files
 tmpclaude-*.cwd
+*.md
+.history

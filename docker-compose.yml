@@ -1,0 +1,17 @@
+services:
+  liveness-api:
+    build:
+      context: .
+      dockerfile: ./DockerFile
+    container_name: liveness-detection-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./weights:/app/weights
+      - torch_cache:/root/.cache/torch
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+volumes:
+  torch_cache:
